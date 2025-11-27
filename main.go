@@ -2,11 +2,11 @@ package main
 
 import (
 	"embed"
-	_ "embed"
 	"log"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
@@ -27,10 +27,12 @@ func main() {
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
 	// 'Bind' is a list of Go struct instances. The frontend has access to the methods of these instances.
 	// 'Mac' options tailor the application when running an macOS.
+	appService := &App{}
 	app := application.New(application.Options{
-		Name:        "wails3-nuxt",
+		Name:        "main",
 		Description: "A demo of using raw HTML & CSS",
 		Services: []application.Service{
+			application.NewService(appService),
 			application.NewService(&GreetService{}),
 		},
 		Assets: application.AssetOptions{
@@ -46,7 +48,7 @@ func main() {
 	// 'Mac' options tailor the window when running on macOS.
 	// 'BackgroundColour' is the background colour of the window.
 	// 'URL' is the URL that will be loaded into the webview.
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "Window 1",
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
@@ -55,7 +57,58 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(27, 38, 54),
 		URL:              "/",
+		Width:            1240,
+		Height:           850,
 	})
+
+	// 窗口关闭时隐藏到托盘而不是退出
+	mainWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		log.Println("窗口关闭，隐藏到系统托盘")
+		mainWindow.Hide()
+		event.Cancel()
+	})
+
+	appService.app = app
+
+	// 创建系统托盘
+	systray := app.SystemTray.New()
+
+	// 读取并设置托盘图标
+	// iconData, err := os.ReadFile("build/windows/icon.ico")
+	// if err != nil {
+	// 	// 如果读取失败，尝试使用 favicon
+	// 	iconData, _ = assets.ReadFile("frontend/dist/favicon.ico")
+	// }
+	// if iconData != nil {
+	// 	systray.SetIcon(iconData)
+	// }
+
+	// 设置托盘提示文本
+	// systray.SetTooltip(appConfig.AppName)
+
+	// 创建托盘菜单
+	trayMenu := app.NewMenu()
+	trayMenu.Add("显示主窗口").OnClick(func(ctx *application.Context) {
+		log.Println("托盘菜单：显示主窗口")
+		mainWindow.Show()
+		mainWindow.Focus()
+	})
+	trayMenu.AddSeparator()
+	trayMenu.Add("退出").OnClick(func(ctx *application.Context) {
+		log.Println("托盘菜单：退出应用")
+		app.Quit()
+	})
+
+	systray.SetMenu(trayMenu)
+
+	// 单击托盘图标显示主窗口
+	systray.OnClick(func() {
+		log.Println("托盘图标被点击")
+		mainWindow.Show()
+		mainWindow.Focus()
+	})
+
+	log.Println("系统托盘创建成功")
 
 	// Create a goroutine that emits an event containing the current time every second.
 	// The frontend can listen to this event and update the UI accordingly.
